@@ -25,13 +25,13 @@ def makerss () :
 	curs = db.cursor(MySQLdb.cursors.DictCursor)
 
 	rss = PyRSS2Gen.RSS2(
-		title = "clien_hot10_RSS",
+		title = "clien_hot10",
 		link = "http://www.clien.net",
 		description = "RSS_clien_hot10",
 		lastBuildDate = datetime.datetime.now(),
 		items = [] )
 
-	rowcount = curs.execute ( """SELECT * FROM rss order by sn DESC limit 50 """ )
+	rowcount = curs.execute ( """SELECT * FROM rss order by sn DESC limit 80 """ )
 
 	for r in curs.fetchall() :
 		lst_title.append( r['title'] )
@@ -70,12 +70,11 @@ def check_pk (url, reply, recom):
 	rowcount = curs.execute ( """SELECT reply, recom FROM rss WHERE url = %s """, url )
 	data = curs.fetchone()
 	if rowcount > 0 :
+		bFind = True
 		# 값이 변경되었으면 업데이트.
 		if ( reply > data['reply']  ) or ( recom  > data['recom'] ) :
 			rowcount = curs.execute ( """UPDATE rss SET reply = %s, recom = %s WHERE url = %s""", (int(reply), int(recom), url) )
 			db.commit()
-			
-		bFind = True
 		
 	return bFind
 	
@@ -109,11 +108,13 @@ def pasing_url( link ):
 			continue
 		
 		title = el.find("a").text
-		title = title.strip()
+		title = ' '.join(title.split())
+
 		url = el.find('a')['href']
 		url = url.strip()
+		url = url.split('?')[0]
 		print title
-		#print url		
+		# print url		
 
 		try :
 			reply = el.findAll("span", {"class" : "badge-reply"})
@@ -141,6 +142,7 @@ def pasing_url( link ):
 		# 덧글 10개 이상이면 내용 가져오기
 		if ( int(reply) >= 10 ) or ( int (recom) >= 5 ) :
 			#기존 저장 된건가? 
+			# feedly 에 제목이 두번나온다. 일단 제목에 업데이트 금지.
 			if not check_pk (url, reply, recom) :
 				req = urllib2.Request('https://www.clien.net' + url) 
 				req.add_header("User-agent", user_agent)
@@ -161,14 +163,15 @@ def pasing_url( link ):
 				
 				# 글쓴이
 				pauthor = soup.findAll("button", {"class" : "button-md button-report"})
-				auth = pauthor[0]
-				auth1 = ''.join(auth.encode('utf-8'))
-				auth2 = auth1.split("'")
-				author = auth2[1]
-
+				auth1 = ''.join(pauthor[0].encode('utf-8'))
+				# 정규식
+				# 문자숫자\w+ 로 시작하고 끝이 따옴표이지만 포함하지 않음
+				rex = re.search("[\w]+(?=\')", auth1)
+				author = rex.group()
+				
 				insert_bbs(category, title, text, url, pubdate.strip(), author, reply, recom )
 				print "INSERT BODY!! "
-				
+					
 		continue; 
 
 reload(sys)
@@ -194,11 +197,17 @@ for u in url_list :
 	for i in range(3,-1,-1) :
 		if i == 0 : 
 			print u 
-			pasing_url(u)
+			try :
+				pasing_url(u)
+			except :
+				continue
 
 		else :
-			print u + '&po=%d' % i
-			pasing_url(u + '?&po=%d' % i)
+			# print u + '&po=%d' % i
+			try :
+				pasing_url(u + '?&po=%d' % i)
+			except :
+				continue
 			
 makerss()
 			
